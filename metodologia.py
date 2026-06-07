@@ -216,7 +216,8 @@ def render(s, r):
                 + (f"Modo equivalencia activo → flota EV = **{log['n_ev_final']}** "
                    f"→ **{log['reduccion_choferes']} choferes menos**."
                    if s.aplicar_equivalencia_capacidad else
-                   "Estás en modo **reemplazo 1:1** (la equivalencia no reduce la flota; actívala en la barra lateral)."))
+                   "Estás en modo **reemplazo 1:1** (la equivalencia no reduce la flota; actívala en la "
+                   "pestaña «Capacidad y flota» o en la barra lateral)."))
     st.divider()
 
     # ── 7. Depreciación / escudo tributario ──────────────────────────────────

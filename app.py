@@ -103,6 +103,15 @@ sb.header("⚙️ Variables del modelo")
 sb.caption("Pasa el cursor sobre el ícono **ⓘ** de cada campo para ver la ayuda, "
            "el valor típico en Chile y la fuente del supuesto.")
 
+# Toggle de equivalencia controlado por DOS checkboxes sincronizados (barra lateral + pestaña
+# «Capacidad y flota»). Patrón canónico Streamlit: cada callback ESPEJA su valor en la clave del
+# otro widget; ambos parten en False. La fuente de verdad es ss.eq_cap_sb (== ss.eq_cap_tab).
+ss = st.session_state
+ss.setdefault("eq_cap_sb", False)
+ss.setdefault("eq_cap_tab", False)
+def _eq_from_sb():  ss.eq_cap_tab = ss.eq_cap_sb
+def _eq_from_tab(): ss.eq_cap_sb = ss.eq_cap_tab
+
 # — Presets —
 with sb.expander("🚐 Vehículo eléctrico (preset)", expanded=True):
     preset_ev = st.selectbox("Modelo e-auto", list(PRESETS_EV.keys()), index=0,
@@ -196,9 +205,11 @@ with sb.expander("🔌 Infraestructura de carga"):
 
 # — Logística / choferes —
 with sb.expander("🚚 Logística y choferes"):
-    equivalencia = st.checkbox("Aplicar equivalencia por capacidad (reducir flota)", value=False,
+    st.checkbox("Aplicar equivalencia por capacidad (reducir flota)", key="eq_cap_sb", on_change=_eq_from_sb,
         help="Si lo activas, el modelo calcula cuántos EV bastan para mover la MISMA carga que la flota diésel. "
-             "Como el EV48 carga más (1.440 kg), a veces se necesitan MENOS vehículos → menos choferes.")
+             "Como el EV48 carga más (1.440 kg), a veces se necesitan MENOS vehículos → menos choferes. "
+             "También puedes activarlo arriba en la pestaña «Capacidad y flota».")
+    equivalencia = ss.eq_cap_sb
     carga_diesel = st.number_input("Carga útil del diésel (kg)", 200, 5_000, int(pd_["carga_util_diesel_kg"]), step=50,
         help="Cuánto carga cada furgón diésel actual. Necesario para la equivalencia de capacidad.")
     vol_diesel = st.number_input("Volumen del diésel (m³)", 1.0, 20.0, float(pd_["volumen_diesel_m3"]), step=0.5,
@@ -386,8 +397,27 @@ with tflota:
                                  float(s.carga_util_ev_kg))
 
     st.markdown("### Capacidad y flota equivalente")
-    st.caption("La mayor carga del EV se lee de dos formas: **(A)** misma carga con **menos unidades** "
-               "y choferes, o **(B)** **más carga** con las mismas unidades. Todo se calcula desde la barra lateral.")
+    st.caption("La mayor carga por unidad del EV se puede aprovechar de dos formas: **(A)** mover la misma "
+               "carga con **menos unidades** (y menos choferes), o **(B)** mover **más carga** con las mismas unidades.")
+
+    # — Toggle de equivalencia EN LA PESTAÑA (sincronizado con el de la barra lateral) —
+    st.checkbox("**Aplicar equivalencia por capacidad** — reemplazar la flota por la cantidad mínima de EV "
+                "que iguala la capacidad", key="eq_cap_tab", on_change=_eq_from_tab,
+        help="Activado: el modelo calcula cuántos EV bastan para mover la misma carga diaria y reemplaza la flota "
+             "por esa cantidad MENOR (Lectura A) → menos vehículos y choferes, lo que alimenta el VAN. "
+             "Desactivado: reemplazo 1:1 (mismo nº de vehículos). Es el mismo control de la barra lateral.")
+    if s.aplicar_equivalencia_capacidad:
+        st.markdown(
+            f"<div style='color:#0B5E2F;font-size:13px;margin:-2px 0 8px'>✅ <b>Modo equivalencia activo.</b> "
+            f"El modelo reemplaza los <b>{r['n_diesel']}</b> furgones diésel por <b>{r['n_ev']} EV</b> "
+            f"(−{log['reduccion_vehiculos']} unidades · −{log['reduccion_choferes']} choferes). "
+            f"Todo lo de abajo refleja esa flota reducida.</div>", unsafe_allow_html=True)
+    else:
+        st.markdown(
+            "<div style='color:#7A8780;font-size:13px;margin:-2px 0 8px'>○ <b>Modo reemplazo 1:1.</b> "
+            "Misma cantidad de vehículos que la flota diésel. Marca la casilla para que el modelo reduzca la "
+            "flota (y los choferes) usando la mayor carga del EV, y veas el ahorro que aporta al VAN.</div>",
+            unsafe_allow_html=True)
 
     # 1) Ecuación sinóptica — unidades desde el motor (misma flota que el VAN)
     eqn = (f"<div style='background:#F2F8F4;border-left:4px solid #00A651;border-radius:8px;"
@@ -412,15 +442,12 @@ with tflota:
            "peso_total_d": r["n_diesel"] * s.carga_util_diesel_kg}
     st.plotly_chart(g.fig_pictograma_capacidad(pic), use_container_width=True, config=PLOTCFG)
 
-    # 4) Banner de estado + puente al dinero (cuantificado con el VP del ahorro de choferes)
-    if not s.aplicar_equivalencia_capacidad:
-        st.info("Estás en **reemplazo 1:1**. Activa *«Aplicar equivalencia por capacidad»* en la barra lateral "
-                "para que el modelo reduzca la flota y los choferes usando la mayor carga del EV.")
-    elif log["reduccion_vehiculos"] > 0:
+    # 4) Puente al dinero (sólo cuando hay reducción real): cuantifica el aporte al VAN
+    if s.aplicar_equivalencia_capacidad and log["reduccion_vehiculos"] > 0:
         chof_vp = r["waterfall"]["choferes"]
         pct = f" (≈{chof_vp / r['van'] * 100:.0f}% del VAN)" if r["van"] and r["van"] > 0 else ""
-        st.success(f"Con la mayor capacidad del EV operas con **{log['reduccion_vehiculos']} vehículos menos** y "
-                   f"**{log['reduccion_choferes']} choferes menos** → aporta **{clp_mm(chof_vp)}** al VAN{pct} "
+        st.success(f"Esos **{log['reduccion_vehiculos']} vehículos menos** son **{log['reduccion_choferes']} "
+                   f"choferes menos** → aportan **{clp_mm(chof_vp)}** al VAN{pct} "
                    f"(es la barra «Choferes» del waterfall en *Resumen ejecutivo*).")
 
     # 5) Las dos lecturas en texto — el binding se enuncia SOLO aquí
