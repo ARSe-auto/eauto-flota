@@ -575,24 +575,46 @@ def sensibilidad_2d(s: Supuestos, var_x: str, valores_x, var_y: str, valores_y, 
 
 
 def tornado(s: Supuestos, delta=0.20):
-    """Sensibilidad univariada (±delta) del VAN para las palancas clave."""
-    palancas = {
-        "precio_diesel_l": "Precio diésel",
-        "precio_energia_kwh": "Precio energía",
-        "km_anual_por_vehiculo": "Km anual",
-        "mantencion_diesel_anual": "Mantención diésel",
-        "precio_ev_clp": "Precio EV",
-        "valor_residual_ev_pct": "Residual EV",
-        "tasa_descuento": "Tasa descuento",
-    }
+    """Sensibilidad univariada (±delta) del VAN para las palancas clave.
+
+    Devuelve, por palanca, además del VAN con el input bajo/alto:
+    - los VALORES de input usados (y su etiqueta formateada),
+    - el SENTIDO de la relación: 'directa' (más input ⇒ más VAN) o 'inversa'
+      (más input ⇒ menos VAN), que es lo que se percibe como "proporción inversa",
+    - el SWING |ΔVAN| = cuánto mueve el VAN entre los dos extremos (su INFLUENCIA).
+    Ordenadas de mayor a menor influencia.
+    """
+    def _clp(v): return "$" + f"{v:,.0f}".replace(",", ".")
+    def _mm(v): return "$" + f"{v/1e6:.1f}".replace(".", ",") + "M"
+    def _pct(v): return f"{v*100:.0f}%"
+    def _km(v): return f"{v:,.0f}".replace(",", ".") + " km"
+
+    # (attr, nombre legible, formateador del valor de input)
+    palancas = [
+        ("precio_diesel_l",        "Precio del diésel",     lambda v: _clp(v) + "/L"),
+        ("precio_energia_kwh",     "Precio electricidad",   lambda v: _clp(v) + "/kWh"),
+        ("km_anual_por_vehiculo",  "Kilómetros al año",     _km),
+        ("mantencion_diesel_anual","Mantención diésel/año", _mm),
+        ("precio_ev_clp",          "Precio del EV",         _mm),
+        ("valor_residual_ev_pct",  "Valor residual EV",     _pct),
+        ("tasa_descuento",         "Tasa de descuento",     _pct),
+    ]
     base = evaluar(s)["van"]
     filas = []
-    for attr, nombre in palancas.items():
-        bajo, alto = {}, {}
-        for signo, dst in ((1 - delta, bajo), (1 + delta, alto)):
-            s2 = Supuestos(**asdict(s))
-            setattr(s2, attr, getattr(s, attr) * signo)
-            dst["van"] = evaluar(s2)["van"]
-        filas.append(dict(palanca=nombre, van_bajo=bajo["van"], van_alto=alto["van"], base=base))
-    filas.sort(key=lambda r: abs(r["van_alto"] - r["van_bajo"]), reverse=True)
+    for attr, nombre, fmt in palancas:
+        v_base = getattr(s, attr)
+        v_bajo, v_alto = v_base * (1 - delta), v_base * (1 + delta)
+        s_lo = Supuestos(**asdict(s)); setattr(s_lo, attr, v_bajo)
+        s_hi = Supuestos(**asdict(s)); setattr(s_hi, attr, v_alto)
+        van_bajo = evaluar(s_lo)["van"]
+        van_alto = evaluar(s_hi)["van"]
+        filas.append(dict(
+            palanca=nombre, attr=attr,
+            van_bajo=van_bajo, van_alto=van_alto, base=base,
+            val_base=v_base, val_bajo=v_bajo, val_alto=v_alto,
+            lbl_base=fmt(v_base), lbl_bajo=fmt(v_bajo), lbl_alto=fmt(v_alto),
+            swing=abs(van_alto - van_bajo),
+            sentido="directa" if van_alto >= van_bajo else "inversa",
+        ))
+    filas.sort(key=lambda r: r["swing"], reverse=True)
     return filas

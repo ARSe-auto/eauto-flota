@@ -245,28 +245,43 @@ def fig_depreciacion(r):
 
 
 # ── 8. Tornado de sensibilidad (VAN ±20%) ────────────────────────────────────
-def fig_tornado(filas, base):
-    """Tornado: una barra flotante por palanca (de VAN-bajo a VAN-alto), coloreada
-    por el efecto en el VAN — verde = mejora, rojo = empeora."""
+def fig_tornado(filas, base, delta_pct=20):
+    """Tornado autoexplicativo. Una fila por variable, ordenadas de MAYOR a menor
+    INFLUENCIA (la más decisiva arriba). Cada etiqueta lleva, en una 2ª línea gris,
+    la DIRECCIÓN en palabras ('mejora al subir' / 'mejora al bajar' — sin flechas
+    ambiguas) y la MAGNITUD del swing. Dos barras por variable: verde = sube el VAN,
+    rojo = lo baja."""
     fig = go.Figure()
-    leyenda_vista = set()
     for f in filas:
-        d_bajo = _mm(f["van_bajo"] - base)   # input −20%
-        d_alto = _mm(f["van_alto"] - base)   # input +20%
-        for d, etq in ((d_bajo, "−20% del input"), (d_alto, "+20% del input")):
-            color = AHORRO if d >= 0 else ROJO
-            nombre = "Mejora el VAN" if d >= 0 else "Empeora el VAN"
+        direc = "subir" if f["sentido"] == "directa" else "bajar"
+        f["_et"] = (f"{f['palanca']}<br>"
+                    f"<span style='font-size:11px;color:#9AA3AD'>"
+                    f"mejora al {direc} · ±{delta_pct}% mueve {_mm(f['swing']):.0f}M</span>")
+
+    leyenda = set()
+    for f in filas:
+        for clave, lblk in (("van_bajo", "lbl_bajo"), ("van_alto", "lbl_alto")):
+            d = _mm(f[clave] - base)
+            sube = d >= 0
+            nombre = "Sube el VAN" if sube else "Baja el VAN"
             fig.add_trace(go.Bar(
-                y=[f["palanca"]], x=[d], orientation="h", base=0,
-                marker_color=color, name=nombre,
-                legendgroup=nombre, showlegend=nombre not in leyenda_vista,
-                hovertemplate=f"{f['palanca']} ({etq}): %{{x:+.1f}} M<extra></extra>"))
-            leyenda_vista.add(nombre)
+                y=[f["_et"]], x=[d], orientation="h", base=0,
+                marker_color=(AHORRO if sube else ROJO), name=nombre,
+                legendgroup=nombre, showlegend=nombre not in leyenda,
+                hovertemplate=(f"<b>{f['palanca']}</b><br>{f[lblk]}"
+                               f"  ⇒  Δ VAN %{{x:+.1f}} M<extra></extra>")))
+            leyenda.add(nombre)
+
     fig.add_vline(x=0, line=dict(color=VERDE_OSC, width=1.5))
-    _layout(fig, f"Tornado de sensibilidad del VAN · base = ${_mm(base):.1f}M",
-            alto=460, b=96, leg_y=-0.20, hover="closest")
-    fig.update_xaxes(title="Δ VAN vs caso base (millones CLP) — barra larga = palanca más decisiva")
-    fig.update_layout(barmode="overlay")
+    fig.add_annotation(x=0, y=1.045, yref="paper", xanchor="center", showarrow=False,
+                       text="VAN del caso base", font=dict(size=10.5, color=VERDE_OSC))
+    # Sin leyenda: el eje X es la clave de color (rojo = lado «baja», verde = lado «sube»).
+    _layout(fig, "Sensibilidad del VAN · variables ordenadas de MAYOR a menor influencia",
+            alto=470, leg=False, b=50, hover="closest")
+    fig.update_yaxes(categoryorder="array", categoryarray=[f["_et"] for f in filas][::-1],
+                     tickfont=dict(size=12.5))
+    fig.update_xaxes(title="Δ VAN vs caso base (millones CLP)   ·   ◀ rojo: baja   |   verde: sube ▶")
+    fig.update_layout(barmode="overlay", margin=dict(l=202, r=40))
     return fig
 
 

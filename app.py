@@ -3,7 +3,9 @@
 app.py — Modelador de reemplazo de flota diésel → eléctrica (E-AUTO Global).
 Interfaz Streamlit. Ejecutar:  streamlit run app.py
 """
+import base64
 from dataclasses import asdict
+from pathlib import Path
 import pandas as pd
 import streamlit as st
 
@@ -26,6 +28,15 @@ def clp_mm(x):
 # Config Plotly: sin barra de herramientas (diseño limpio, sin íconos flotantes)
 PLOTCFG = {"displayModeBar": False, "responsive": True}
 
+# Logo e-auto (en assets/, ruta relativa robusta para local y Streamlit Cloud)
+@st.cache_data
+def _logo_b64():
+    p = Path(__file__).parent / "assets" / "eauto_logo.png"
+    try:
+        return base64.b64encode(p.read_bytes()).decode()
+    except Exception:
+        return ""
+
 # ── Estilos (criterio de diseño limpio: tipografía Montserrat, grilla, aire) ──
 st.markdown("""
 <style>
@@ -39,8 +50,13 @@ st.markdown("""
   header[data-testid="stHeader"] { background: transparent; height: 0; }
 
   /* Encabezado */
-  .ea-hero { background:#0B5E2F; padding: 26px 30px; border-radius: 10px; color:#fff;
-             margin-bottom: 22px; border-left: 4px solid #00A651; }
+  .ea-hero { background:#0B5E2F; padding: 24px 30px; border-radius: 10px; color:#fff;
+             margin-bottom: 22px; border-left: 4px solid #00A651;
+             display:flex; align-items:center; gap:26px; flex-wrap:wrap; }
+  .ea-hero-text { flex:1 1 360px; min-width:0; }
+  .ea-logo-chip { flex:0 0 auto; background:#fff; border-radius:10px; padding:12px 18px;
+                  box-shadow:0 2px 10px rgba(0,0,0,.14); }
+  .ea-logo-chip img { height:52px; display:block; }
   .ea-hero .eyebrow { text-transform:uppercase; letter-spacing:.2em; font-size:10.5px;
                       font-weight:700; opacity:.82; margin-bottom:9px; }
   .ea-hero h1 { margin:0; font-size:25px; font-weight:700; letter-spacing:-.01em; line-height:1.18; }
@@ -65,12 +81,18 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+_logo = _logo_b64()
+_logo_chip = (f'<div class="ea-logo-chip"><img src="data:image/png;base64,{_logo}" '
+              f'alt="e-auto · Electric Vehicles"></div>') if _logo else ""
 st.markdown(
     '<div class="ea-hero">'
+    '<div class="ea-hero-text">'
     '<div class="eyebrow">E-AUTO Global · Electromovilidad utilitaria</div>'
     '<h1>Modelador de Reemplazo de Flota · Diésel → Eléctrico</h1>'
     '<p>Análisis TCO + logística + tributario · Gecko EV48 / MagicWay · '
-    'valores base: Estudio de Mercado EV Comerciales Chile (jun-2026)</p></div>',
+    'valores base: Estudio de Mercado EV Comerciales Chile (jun-2026)</p></div>'
+    + _logo_chip +
+    '</div>',
     unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -485,11 +507,25 @@ y un peso hoy vale más que uno en 7 años. Por eso, con utilidades, la instant�
 
 # ── TAB 5: Sensibilidad ───────────────────────────────────────────────────
 with t5:
-    st.subheader("Tornado — ¿qué palancas mueven más el VAN?")
+    st.subheader("¿Qué variables mueven más el VAN? · tornado de sensibilidad")
     filas = tornado(s, delta=0.20)
-    st.plotly_chart(g.fig_tornado(filas, r["van"]), use_container_width=True, config=PLOTCFG)
-    st.caption("Cada barra mueve una variable ±20% dejando todo lo demás constante. Las de arriba son las más "
-               "decisivas — donde más vale la pena tener datos reales del cliente.")
+    st.plotly_chart(g.fig_tornado(filas, r["van"], delta_pct=20), use_container_width=True, config=PLOTCFG)
+    top = filas[0]["palanca"] if filas else ""
+    st.markdown(
+        "**Cómo leerlo.** Cada variable se mueve **±20 %** dejando todo lo demás igual. La **longitud** de "
+        "la barra = cuánto cambia el VAN ⇒ **las de arriba son las más decisivas** "
+        f"(aquí manda **{top}**). Bajo cada nombre se indica su **dirección** y su **influencia** "
+        "(cuánto mueve el VAN). El **color** muestra el efecto: 🟩 verde = el VAN **sube**, "
+        "🟥 rojo = el VAN **baja**.")
+    st.info(
+        "**Sobre la “proporción inversa” que notaste:** no todas las variables empujan en el mismo sentido, "
+        "y bajo cada nombre se aclara con **“mejora al subir”** o **“mejora al bajar”**.\n\n"
+        "• **Mejora al SUBIR** (costos del *rival*): precio del diésel, kilómetros al año, mantención diésel — "
+        "cuando **aumentan**, el caso eléctrico mejora.\n\n"
+        "• **Mejora al BAJAR** (costos *propios*): precio del EV, tasa de descuento, precio de la electricidad — "
+        "el VAN mejora cuando **disminuyen**.\n\n"
+        "No es un error del gráfico: es la dirección real de cada palanca. Pasa el cursor sobre una barra para "
+        "ver el valor exacto del input y su efecto en el VAN.")
     st.divider()
     st.subheader("Mapa de calor — Precio diésel × Kilómetros al año → VAN")
     precios = [800, 950, 1050, 1150, 1300, 1500]
