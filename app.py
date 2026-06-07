@@ -559,7 +559,6 @@ impuesto verde ≈ $0 como beneficios regulatorios adicionales.
 with t7:
     metodologia.render(s, r)
 
-st.caption("E-AUTO Global · Modelador de flota v1.0 · Las cifras de arriba reflejan TUS inputs actuales. "
-           "El motor reproduce además el caso base validado del Estudio de Mercado (Entregable 7): "
-           "payback ~2,6 a · VAN +7M/u · TIR ~33%, con los supuestos originales de ese estudio "
-           "(diésel 1.050/L, sin recuperación de IVA).")
+st.caption(f"E-AUTO Global · Modelador de flota v1.0 · Las cifras de arriba reflejan TUS inputs actuales "
+           f"(diésel {clp(precio_diesel_l)}/L · IVA {'recuperable' if iva_recuperable else 'no recuperable'}). "
+           f"El motor está validado contra el caso base del Estudio de Mercado (Entregable 7).")
