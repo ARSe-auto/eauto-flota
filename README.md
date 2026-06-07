@@ -68,8 +68,10 @@ Se abre en **http://localhost:8501**. Para detenerlo: `Ctrl-C` en la terminal.
 
 ## 🔬 Validación
 
-El motor (`motor.py`) reproduce el **caso base validado del Estudio de Mercado (Entregable 7,
-jun-2026)**: payback ≈ 2,6 años · TIR ≈ 33 % · VAN ≈ +$7,0M/unidad · TCO 7 años −27 %.
+El motor (`motor.py`) reproduce el **caso base del Estudio de Mercado (Entregable 7, jun-2026)**
+con el precio de diésel **actualizado a $1.500/L** (el estudio usó $1.050, hoy desactualizado):
+payback ≈ 1,8 años · TIR ≈ 52 % · VAN ≈ +$13,0M/unidad · TCO 7 años −24 %.
+*(Con el $1.050 original el estudio daba 2,6 a · 33 % · +$7,0M · −27 %.)*
 Verificable con:
 ```bash
 python test_motor.py

@@ -15,9 +15,11 @@ Implementa el modelo estándar de TCO (Total Cost of Ownership) ampliado con:
     (lineal / acelerada 1/3 / instantánea 100% año 1) y decisión de si conviene.
   • Externalidades: toneladas de CO₂ evitadas.
 
-Caso base = Entregable 7 del «Estudio de Mercado EV Comerciales Chile» (jun-2026),
-validado por el directorio de E-Auto. Los valores por defecto reproducen ese caso:
-payback ~2,6 años · TIR ~33% · VAN +$7,0M/unidad · TCO 7 años −27% vs diésel.
+Los valores por defecto parten del Entregable 7 del «Estudio de Mercado EV Comerciales
+Chile» (jun-2026) pero actualizan el precio del diésel al vigente 2026 ($1.500/L; el
+estudio usó $1.050, hoy desactualizado). Con $1.500/L el caso base por unidad da:
+payback ~1,8 años · TIR ~52% · VAN +$13,0M/unidad · TCO 7 años −24% vs diésel.
+(El test de regresión reproduce el Entregable 7 con el precio actualizado.)
 """
 from __future__ import annotations
 from dataclasses import dataclass, field, asdict
@@ -90,7 +92,7 @@ class Supuestos:
     # — Vehículo DIÉSEL a reemplazar —
     precio_diesel_clp: float = 22_000_000
     rendimiento_km_l: float = 11.0          # km por litro
-    precio_diesel_l: float = 1_050          # CLP/L
+    precio_diesel_l: float = 1_500          # CLP/L (precio 2026 vigente; el estudio usó 1.050)
     mantencion_diesel_anual: float = 1_200_000
     neumaticos_diesel_anual: float = 350_000
     seguro_diesel_anual: float = 600_000

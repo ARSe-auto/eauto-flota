@@ -332,8 +332,8 @@ else:
 # ════════════════════════════════════════════════════════════════════════════
 #  TABS
 # ════════════════════════════════════════════════════════════════════════════
-t1, t2, t3, tcap, t4, t5, t6, t7 = st.tabs(
-    ["📊 Resumen ejecutivo", "💰 TCO detallado", "🚚 Logística", "📦 Capacidad equivalente",
+t1, t2, tflota, t4, t5, t6, t7 = st.tabs(
+    ["📊 Resumen ejecutivo", "💰 TCO detallado", "🚚 Capacidad y flota",
      "🏛️ Tributario", "📈 Sensibilidad", "🌱 Impacto CO₂", "📖 Metodología"])
 
 # ── TAB 1: Resumen ejecutivo ──────────────────────────────────────────────
@@ -375,106 +375,89 @@ with t2:
     cc[1].metric("TCO eléctrico (VP)", clp_mm(r["tco_ev"]))
     cc[2].metric("Sobrecosto inicial (CAPEX delta)", clp_mm(r["inc_capex"]))
 
-# ── TAB 3: Logística ──────────────────────────────────────────────────────
-with t3:
+# ── TAB: Capacidad y flota (fusión Logística + Capacidad equivalente) ──────
+with tflota:
     log = r["logistica"]
-    st.plotly_chart(g.fig_logistica(r), use_container_width=True, config=PLOTCFG)
-    c = st.columns(4)
-    c[0].metric("Vehículos diésel hoy", r["n_diesel"])
-    c[1].metric("Vehículos EV equivalentes", r["n_ev"], delta=f"{r['n_ev']-r['n_diesel']}")
-    c[2].metric("Choferes reducibles", log["reduccion_choferes"])
-    c[3].metric("Ahorro choferes/año", clp_mm(r["ahorro_choferes_anual"]))
-    st.markdown(f"""
-**Restricción que manda (binding): `{log['restriccion_binding']}`**
+    # Lectura B (más capacidad, NOMINAL) desde una sola fuente: los valores de la barra lateral.
+    # La cifra de unidades equivalentes (Lectura A) viene SIEMPRE del motor (r['logistica']),
+    # que usa utilización real + autonomía y es la que alimenta el VAN/choferes.
+    cap = equivalencia_capacidad(int(s.num_vehiculos_diesel), float(s.volumen_diesel_m3),
+                                 float(s.carga_util_diesel_kg), float(s.volumen_ev_m3),
+                                 float(s.carga_util_ev_kg))
 
-La flota diésel mueve por día tipo: **{log['peso_dia_kg']:,.0f} kg** ·
-**{log['volumen_dia_m3']:,.1f} m³** · **{log['km_dia_flota']:,.0f} km**.
-Para igualar esa capacidad con el EV ({s.carga_util_ev_kg:,.0f} kg / {s.volumen_ev_m3} m³ /
-{s.autonomia_km:.0f} km) se requieren:
-- por **peso**: {log['req_peso']:.2f} vehículos
-- por **volumen**: {log['req_volumen']:.2f} vehículos
-- por **autonomía**: {log['req_autonomia']:.2f} vehículos
+    st.markdown("### Capacidad y flota equivalente")
+    st.caption("La mayor carga del EV se lee de dos formas: **(A)** misma carga con **menos unidades** "
+               "y choferes, o **(B)** **más carga** con las mismas unidades. Todo se calcula desde la barra lateral.")
 
-→ binding = **{log['n_ev_equivalente']} EV**.
-""".replace(",", "."))
-    if not s.aplicar_equivalencia_capacidad:
-        st.info("Estás en modo **reemplazo 1:1**. Activa *«Aplicar equivalencia por capacidad»* en la barra "
-                "lateral para que el modelo reduzca la flota (y los choferes) usando la mayor carga del EV.")
-    elif log["reduccion_vehiculos"] > 0:
-        st.success(f"Con la mayor capacidad del EV puedes operar con **{log['reduccion_vehiculos']} vehículos menos** "
-                   f"y **{log['reduccion_choferes']} choferes menos** — la palanca de mayor valor en última milla.")
-
-# ── TAB CAPACIDAD: Capacidad equivalente ──────────────────────────────────
-with tcap:
-    st.markdown("### 📦 Capacidad equivalente de transporte · diésel → eléctrico")
-    st.caption("La mayor carga por unidad del EV se lee de dos formas: **(A)** mover la misma carga "
-               "con **menos unidades**, o **(B)** mover **más carga** con las mismas unidades. "
-               "Cálculo a capacidad nominal (vehículo lleno).")
-
-    ci = st.columns(5)
-    cap_n = ci[0].number_input("Furgones diésel", 1, 500, int(s.num_vehiculos_diesel), step=1, key="cap_n")
-    cap_vd = ci[1].number_input("Volumen diésel (m³/u)", 0.5, 30.0, float(s.volumen_diesel_m3), step=0.1, key="cap_vd")
-    cap_pd = ci[2].number_input("Carga diésel (kg/u)", 100, 6000, int(s.carga_util_diesel_kg), step=10, key="cap_pd")
-    cap_ve = ci[3].number_input("Volumen EV (m³/u)", 0.5, 30.0, round(max(6.7, float(s.volumen_ev_m3)), 1), step=0.1,
-        key="cap_ve", help="EV48 = 6,2 m³ certificado (GB/T) · 6,7 m³ con mampara abierta · MagicWay = 8,1 m³.")
-    cap_pe = ci[4].number_input("Carga EV (kg/u)", 100, 6000, int(s.carga_util_ev_kg), step=10, key="cap_pe")
-
-    eq = equivalencia_capacidad(cap_n, cap_vd, cap_pd, cap_ve, cap_pe)
-
-    # — Ecuación sinóptica —
+    # 1) Ecuación sinóptica — unidades desde el motor (misma flota que el VAN)
     eqn = (f"<div style='background:#F2F8F4;border-left:4px solid #00A651;border-radius:8px;"
-           f"padding:14px 18px;margin:6px 0 4px;font-size:17px;color:#15302A'>"
-           f"<b>{eq['n_diesel']}</b> furgones diésel "
-           f"<span style='color:#7A8780'>({cap_vd:g} m³ · {cap_pd:,.0f} kg c/u)</span>"
-           f" &nbsp;≡&nbsp; <b style='color:#0B5E2F'>{eq['n_ev']}</b> Gecko EV "
-           f"<span style='color:#7A8780'>({cap_ve:g} m³ · {cap_pe:,.0f} kg c/u)</span>"
-           f" &nbsp;→&nbsp; <b style='color:#00A651'>−{eq['reduccion_u']} unidades</b></div>")
+           f"padding:14px 18px;margin:6px 0 10px;font-size:17px;color:#15302A'>"
+           f"<b>{r['n_diesel']}</b> furgones diésel "
+           f"<span style='color:#7A8780'>({s.volumen_diesel_m3:g} m³ · {s.carga_util_diesel_kg:,.0f} kg c/u)</span>"
+           f" &nbsp;≡&nbsp; <b style='color:#0B5E2F'>{r['n_ev']}</b> Gecko EV "
+           f"<span style='color:#7A8780'>({s.volumen_ev_m3:g} m³ · {s.carga_util_ev_kg:,.0f} kg c/u)</span>"
+           f" &nbsp;→&nbsp; <b style='color:#00A651'>−{log['reduccion_vehiculos']} unidades</b></div>")
     st.markdown(eqn.replace(",", "."), unsafe_allow_html=True)
 
-    # — Dos modos, lado a lado —
-    cA, cB = st.columns(2)
-    with cA:
-        st.markdown("#### 🔻 Modo A · misma carga, **menos unidades**")
-        m = st.columns(2)
-        m[0].metric("Unidades EV necesarias", eq["n_ev"], delta=f"−{eq['reduccion_u']} vs {eq['n_diesel']}")
-        m[1].metric("Reducción de flota", f"−{eq['reduccion_pct']*100:.0f}%")
-        st.caption(f"Restricción que manda: **{eq['binding']}** "
-                   f"(volumen {eq['ev_vol_exacto']:.2f}→{eq['ev_vol']} · peso {eq['ev_peso_exacto']:.2f}→{eq['ev_peso']} EV). "
-                   f"Se redondea hacia arriba (no se compran fracciones de vehículo).")
-    with cB:
-        st.markdown("#### 🔺 Modo B · mismas unidades, **más capacidad**")
-        m = st.columns(2)
-        m[0].metric("Volumen total", f"+{eq['amp_vol_pct']*100:.0f}%",
-                    delta=f"+{eq['amp_vol_abs']:.0f} m³")
-        m[1].metric("Carga útil total", f"+{eq['amp_peso_pct']*100:.0f}%",
-                    delta=f"+{eq['amp_peso_abs']:,.0f} kg".replace(",", "."))
-        cap_txt = (f"Con las mismas **{eq['n_diesel']} unidades**, la flota EV transporta "
-                   f"**{eq['vol_total_ev']:.0f} m³** (vs {eq['vol_total_d']:.0f}) y "
-                   f"**{eq['peso_total_ev']:,.0f} kg** (vs {eq['peso_total_d']:,.0f}).")
-        st.caption(cap_txt.replace(",", "."))
+    # 2) Cuatro métricas: las dos lecturas + el puente a operación y dinero
+    c = st.columns(4)
+    c[0].metric("Flota diésel hoy", r["n_diesel"])
+    c[1].metric("Flota EV equivalente", r["n_ev"], delta=f"{r['n_ev']-r['n_diesel']}")
+    c[2].metric("Choferes que se liberan", log["reduccion_choferes"])
+    c[3].metric("Ahorro choferes/año", clp_mm(r["ahorro_choferes_anual"]))
 
-    # — Pictograma sinóptico —
-    st.plotly_chart(g.fig_pictograma_capacidad(eq), use_container_width=True, config=PLOTCFG)
+    # 3) Gráfico hero (Lectura A) — pictograma alimentado por el MOTOR, no por el cálculo nominal
+    pic = {"n_diesel": r["n_diesel"], "n_ev": r["n_ev"],
+           "vol_total_d": r["n_diesel"] * s.volumen_diesel_m3,
+           "peso_total_d": r["n_diesel"] * s.carga_util_diesel_kg}
+    st.plotly_chart(g.fig_pictograma_capacidad(pic), use_container_width=True, config=PLOTCFG)
 
-    # — Barras de capacidad (modo B) —
+    # 4) Banner de estado + puente al dinero (cuantificado con el VP del ahorro de choferes)
+    if not s.aplicar_equivalencia_capacidad:
+        st.info("Estás en **reemplazo 1:1**. Activa *«Aplicar equivalencia por capacidad»* en la barra lateral "
+                "para que el modelo reduzca la flota y los choferes usando la mayor carga del EV.")
+    elif log["reduccion_vehiculos"] > 0:
+        chof_vp = r["waterfall"]["choferes"]
+        pct = f" (≈{chof_vp / r['van'] * 100:.0f}% del VAN)" if r["van"] and r["van"] > 0 else ""
+        st.success(f"Con la mayor capacidad del EV operas con **{log['reduccion_vehiculos']} vehículos menos** y "
+                   f"**{log['reduccion_choferes']} choferes menos** → aporta **{clp_mm(chof_vp)}** al VAN{pct} "
+                   f"(es la barra «Choferes» del waterfall en *Resumen ejecutivo*).")
+
+    # 5) Las dos lecturas en texto — el binding se enuncia SOLO aquí
+    st.markdown(f"""
+**Lectura A · misma carga, menos unidades.** La flota diésel mueve por día tipo
+**{log['peso_dia_kg']:,.0f} kg** · **{log['volumen_dia_m3']:,.1f} m³** · **{log['km_dia_flota']:,.0f} km**.
+Igualar esa capacidad con el EV ({s.carga_util_ev_kg:,.0f} kg / {s.volumen_ev_m3:g} m³ / {s.autonomia_km:.0f} km)
+requiere **peso {log['req_peso']:.1f}** · **volumen {log['req_volumen']:.1f}** · **autonomía {log['req_autonomia']:.1f}**
+vehículos → manda **{log['restriccion_binding']}**: **bastan {log['n_ev_equivalente']} EV** para igualar la capacidad.
+
+**Lectura B · mismas unidades, más capacidad.** Con las mismas **{r['n_diesel']} unidades**, la flota EV transporta
+**+{cap['amp_vol_pct']*100:.0f}% de volumen** (+{cap['amp_vol_abs']:.0f} m³) y **+{cap['amp_peso_pct']*100:.0f}% de carga**
+(+{cap['amp_peso_abs']:,.0f} kg), a capacidad nominal (vehículo lleno).
+""".replace(",", "."))
+
+    # 6) Dos barras compactas — Lectura B (única evidencia gráfica de "más capacidad")
     cv, cp = st.columns(2)
-    cv.plotly_chart(g.fig_capacidad_total(eq, "volumen"), use_container_width=True, config=PLOTCFG)
-    cp.plotly_chart(g.fig_capacidad_total(eq, "peso"), use_container_width=True, config=PLOTCFG)
+    cv.plotly_chart(g.fig_capacidad_total(cap, "volumen"), use_container_width=True, config=PLOTCFG)
+    cp.plotly_chart(g.fig_capacidad_total(cap, "peso"), use_container_width=True, config=PLOTCFG)
 
-    # — Tabla numérica sinóptica —
-    st.markdown("##### Detalle numérico")
+    # 7) Tabla numérica única (desde cap)
     tabla_cap = pd.DataFrame({
         "Dimensión": ["Volumen", "Carga útil (peso)"],
-        "Diésel (por u.)": [f"{cap_vd:g} m³", f"{cap_pd:,.0f} kg".replace(",", ".")],
-        "EV (por u.)": [f"{cap_ve:g} m³", f"{cap_pe:,.0f} kg".replace(",", ".")],
-        "Más capacidad/u.": [f"+{eq['amp_vol_pct']*100:.0f}%", f"+{eq['amp_peso_pct']*100:.0f}%"],
-        "Flota diésel total": [f"{eq['vol_total_d']:.0f} m³", f"{eq['peso_total_d']:,.0f} kg".replace(",", ".")],
-        "EV p/ igualar": [f"{eq['ev_vol_exacto']:.2f} → {eq['ev_vol']}",
-                          f"{eq['ev_peso_exacto']:.2f} → {eq['ev_peso']}"],
+        "Diésel (por u.)": [f"{s.volumen_diesel_m3:g} m³", f"{s.carga_util_diesel_kg:,.0f} kg".replace(",", ".")],
+        "EV (por u.)": [f"{s.volumen_ev_m3:g} m³", f"{s.carga_util_ev_kg:,.0f} kg".replace(",", ".")],
+        "Más capacidad/u.": [f"+{cap['amp_vol_pct']*100:.0f}%", f"+{cap['amp_peso_pct']*100:.0f}%"],
+        "Flota diésel total": [f"{cap['vol_total_d']:.0f} m³", f"{cap['peso_total_d']:,.0f} kg".replace(",", ".")],
+        "EV p/ igualar (nominal)": [f"{cap['ev_vol_exacto']:.2f} → {cap['ev_vol']}",
+                                    f"{cap['ev_peso_exacto']:.2f} → {cap['ev_peso']}"],
     })
     st.dataframe(tabla_cap, use_container_width=True, hide_index=True)
-    st.caption("Nota: el EV48 declara **6,2 m³ certificados (GB/T)** y **6,7 m³ con mampara abierta**; "
-               "el MagicWay, **8,1 m³**. Ajusta los campos de arriba según el modelo y configuración.")
+
+    # 8) Nota al pie — diferencia operativo (A) vs nominal (B) + specs
+    st.caption(f"La **Lectura A** (operativa) usa utilización real ({s.utilizacion_peso_pct*100:.0f}% peso / "
+               f"{s.utilizacion_volumen_pct*100:.0f}% volumen) y autonomía; la **Lectura B** es nominal (vehículo "
+               f"lleno), por eso su N° de EV puede diferir. Specs de volumen: EV48 6,2 m³ certificado (6,7 con "
+               f"mampara abierta) · MagicWay 8,1 m³. Edita los valores en la barra lateral (🚚 Logística y choferes).")
 
 # ── TAB 4: Tributario ─────────────────────────────────────────────────────
 with t4:
@@ -528,7 +511,7 @@ with t5:
         "ver el valor exacto del input y su efecto en el VAN.")
     st.divider()
     st.subheader("Mapa de calor — Precio diésel × Kilómetros al año → VAN")
-    precios = [800, 950, 1050, 1150, 1300, 1500]
+    precios = [1100, 1300, 1500, 1700, 1900, 2100]
     kms = [15_000, 20_000, 30_000, 40_000, 50_000, 60_000]
     Z = sensibilidad_2d(s, "precio_diesel_l", precios, "km_anual_por_vehiculo", kms, "van")
     st.plotly_chart(g.fig_heatmap(Z, precios, kms, "Precio diésel (CLP/L)", "Km/año", "VAN (M)"),

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Test de regresión: el motor debe reproducir el caso base del Entregable 7 del estudio."""
+"""Test de regresión: el motor reproduce el caso base del Entregable 7 del estudio,
+con el precio de diésel ACTUALIZADO a $1.500/L (el estudio usó $1.050, hoy desactualizado)."""
 from motor import Supuestos, evaluar, analisis_depreciacion
 
 def test_caso_base_estudio():
@@ -9,7 +10,7 @@ def test_caso_base_estudio():
         km_anual_por_vehiculo=30_000,
         horizonte_anios=7, tasa_descuento=0.10,
         escalamiento_diesel=0, escalamiento_energia=0, escalamiento_costos=0,
-        precio_diesel_clp=22_000_000, rendimiento_km_l=11.0, precio_diesel_l=1_050,
+        precio_diesel_clp=22_000_000, rendimiento_km_l=11.0, precio_diesel_l=1_500,  # 2026 vigente
         mantencion_diesel_anual=1_200_000,
         precio_ev_clp=29_750_000, eficiencia_km_kwh=6.2, precio_energia_kwh=130,
         perdidas_carga_pct=0.0, mantencion_ev_anual=400_000,
@@ -28,20 +29,21 @@ def test_caso_base_estudio():
     )
     r = evaluar(s)
     print(f"  inc_capex        = ${r['inc_capex']:,.0f}  (esperado ~7.750.000)")
-    print(f"  ahorro OPEX/año  = ${r['ahorro_anual'][0]:,.0f}  (esperado ~3.034.000)")
-    print(f"  payback simple   = {r['payback_simple']:.2f} años  (esperado ~2,6)")
-    print(f"  VAN (7a, 10%)    = ${r['van']:,.0f}  (esperado ~+7.000.000)")
-    print(f"  TIR              = {r['tir']*100:.1f}%  (esperado ~33%)")
+    print(f"  ahorro OPEX/año  = ${r['ahorro_anual'][0]:,.0f}  (esperado ~4.262.000)")
+    print(f"  payback simple   = {r['payback_simple']:.2f} años  (esperado ~1,8)")
+    print(f"  VAN (7a, 10%)    = ${r['van']:,.0f}  (esperado ~+13.000.000)")
+    print(f"  TIR              = {r['tir']*100:.1f}%  (esperado ~52%)")
     print(f"  TCO diésel 7a    = ${r['tco_diesel']:,.0f}")
     print(f"  TCO EV 7a        = ${r['tco_ev']:,.0f}")
     print(f"  costo/km diésel  = ${r['costo_km_diesel']:.1f}  | costo/km EV = ${r['costo_km_ev']:.1f}")
 
+    # Valores a diésel $1.500/L (verificados ejecutando el motor). inc_capex NO depende del diésel.
     assert abs(r["inc_capex"] - 7_750_000) < 1, "CAPEX delta debe ser $7,75M"
-    assert abs(r["ahorro_anual"][0] - 3_034_000) < 20_000, "Ahorro OPEX/año ~$3,03M"
-    assert abs(r["payback_simple"] - 2.6) < 0.15, "Payback ~2,6 años"
-    assert abs(r["van"] - 7_000_000) < 200_000, "VAN ~+$7,0M"
-    assert r["tir"] is not None and abs(r["tir"] - 0.33) < 0.03, "TIR ~33%"
-    print("  ✓ Caso base del Entregable 7 reproducido.")
+    assert abs(r["ahorro_anual"][0] - 4_261_877) < 20_000, "Ahorro OPEX/año ~$4,26M"
+    assert abs(r["payback_simple"] - 1.82) < 0.15, "Payback ~1,8 años"
+    assert abs(r["van"] - 12_998_601) < 200_000, "VAN ~+$13,0M"
+    assert r["tir"] is not None and abs(r["tir"] - 0.52) < 0.03, "TIR ~52%"
+    print("  ✓ Caso base del Entregable 7 (a diésel $1.500/L) reproducido.")
 
 
 def test_depreciacion_instantanea_conviene():
