@@ -101,6 +101,11 @@ class Supuestos:
     carga_util_diesel_kg: float = 1_000
     volumen_diesel_m3: float = 5.0
     valor_residual_diesel_pct: float = 0.20  # % del precio al final del horizonte
+    diesel_costo_hundido: bool = False       # True: la flota diésel YA está pagada (costo hundido)
+                                             # → CAPEX, depreciación y residual diésel = 0
+    diesel_reventa_pct: float = 0.40         # valor de reventa ACTUAL de los diésel usados (% del precio
+                                             # de compra). Sólo aplica si diesel_costo_hundido: al cambiarse,
+                                             # se venden y ese ingreso REBAJA la compra del EV (año 0)
 
     # — Vehículo ELÉCTRICO (Gecko EV48 por defecto) —
     precio_ev_clp: float = 29_750_000       # IVA incluido (precio de lista)
@@ -371,7 +376,9 @@ def opex_por_vehiculo(s: Supuestos, tipo: str) -> dict:
 # ───────────────────────────────────────────────────────────────────────────
 #  Evaluación de un escenario (flota completa) → flujos y TCO
 # ───────────────────────────────────────────────────────────────────────────
-def evaluar_escenario(s: Supuestos, tipo: str, n_vehiculos: int) -> dict:
+def evaluar_escenario(s: Supuestos, tipo: str, n_vehiculos: int, credito_year0: float = 0.0) -> dict:
+    # credito_year0: ingreso de caja en el año 0 que rebaja el desembolso (ej.: vender la flota
+    # diésel ya pagada rebaja la compra del EV). NO toca la base de depreciación ni el residual.
     n = s.horizonte_anios
     precio = s.precio_ev_clp if tipo == "ev" else s.precio_diesel_clp
     residual_pct = s.valor_residual_ev_pct if tipo == "ev" else s.valor_residual_diesel_pct
@@ -383,6 +390,11 @@ def evaluar_escenario(s: Supuestos, tipo: str, n_vehiculos: int) -> dict:
 
     # CAPEX (año 0), neto de IVA
     capex_vehiculos = precio * n_vehiculos * factor_iva
+    # Flota diésel YA pagada (costo hundido): no hay desembolso de compra, y al ser un activo ya
+    # amortizado/antiguo tampoco aporta depreciación ni residual al final → base = 0. El EV pasa a
+    # ser una inversión nueva completa (la decisión es "seguir con los diésel pagados vs comprar EV").
+    if tipo == "diesel" and s.diesel_costo_hundido:
+        capex_vehiculos = 0.0
     if tipo == "ev":
         n_cargadores = math.ceil(n_vehiculos / max(1e-9, s.vehiculos_por_cargador))
         capex_infra = (n_cargadores * s.costo_cargador_clp + s.costo_instalacion_electrica) * factor_iva
@@ -404,8 +416,9 @@ def evaluar_escenario(s: Supuestos, tipo: str, n_vehiculos: int) -> dict:
     residual = residual_pct * capex_vehiculos
     residual_neto = residual * (1 - s.tasa_impuesto) if aplica_trib else residual
 
-    # Flujo de caja (negativo = egreso). Año 0 = -CAPEX.
-    flujo = [-capex]
+    # Flujo de caja (negativo = egreso). Año 0 = -(CAPEX − crédito por venta de la flota antigua).
+    capex_neto_year0 = capex - credito_year0
+    flujo = [-capex_neto_year0]
     for t in range(n):
         f = -opex_flota[t] + escudo[t]
         if t == n - 1:
@@ -418,7 +431,8 @@ def evaluar_escenario(s: Supuestos, tipo: str, n_vehiculos: int) -> dict:
 
     return dict(
         tipo=tipo, n_vehiculos=n_vehiculos, capex=capex, capex_vehiculos=capex_vehiculos,
-        capex_infra=capex_infra, opex_flota=opex_flota, opex_desglose=op,
+        capex_infra=capex_infra, credito_year0=credito_year0, capex_neto_year0=capex_neto_year0,
+        opex_flota=opex_flota, opex_desglose=op,
         depreciacion=dep, escudo=escudo, residual=residual, residual_neto=residual_neto,
         flujo=flujo, tco_vpn=tco_vpn, tco_nominal=tco_nominal,
     )
@@ -454,9 +468,16 @@ def evaluar(s: Supuestos) -> dict:
     n_diesel = s.num_vehiculos_diesel
     n_ev = log["n_ev_final"]
 
-    # 2) Escenarios de flota
+    # 2) Escenarios de flota.
+    #    Si la flota diésel ya está pagada (costo hundido), al cambiarse el usuario VENDE los diésel
+    #    usados; ese ingreso del año 0 REBAJA la compra de los EV (crédito). Neto de IVA, consistente
+    #    con cómo se netea el CAPEX. NO toca la base de depreciación/residual del EV.
+    diesel_reventa = 0.0
+    if s.diesel_costo_hundido:
+        factor_iva = 1.0 / (1.0 + s.iva_pct) if s.iva_recuperable else 1.0
+        diesel_reventa = s.diesel_reventa_pct * s.precio_diesel_clp * n_diesel * factor_iva
     esc_diesel = evaluar_escenario(s, "diesel", n_diesel)
-    esc_ev = evaluar_escenario(s, "ev", n_ev)
+    esc_ev = evaluar_escenario(s, "ev", n_ev, credito_year0=diesel_reventa)
 
     # 3) Ahorro de choferes (flota EV puede operar con menos conductores)
     ahorro_choferes_anual = 0.0
@@ -470,8 +491,9 @@ def evaluar(s: Supuestos) -> dict:
     serie_choferes = _serie(ahorro_choferes_anual, s.escalamiento_costos, n) if ahorro_choferes_anual else [0.0] * n
 
     # 4) Flujo INCREMENTAL (cambiarse a EV): diésel − EV, año a año
-    #    Año 0: -(CAPEX_ev - CAPEX_diesel)  → el sobrecosto que se invierte
-    inc_capex = esc_ev["capex"] - esc_diesel["capex"]
+    #    Año 0: -(CAPEX_ev_neto - CAPEX_diesel_neto). El "neto" incorpora el crédito por venta de la
+    #    flota diésel pagada (si aplica) en el lado EV, así inc_capex y el flujo/TCO coinciden.
+    inc_capex = esc_ev["capex_neto_year0"] - esc_diesel["capex_neto_year0"]
     flujo_inc = [-inc_capex]
     ahorro_opex_anual = []
     for t in range(n):
@@ -532,7 +554,7 @@ def evaluar(s: Supuestos) -> dict:
         escenario_diesel=esc_diesel,
         escenario_ev=esc_ev,
         n_diesel=n_diesel, n_ev=n_ev,
-        inc_capex=inc_capex,
+        inc_capex=inc_capex, diesel_reventa=diesel_reventa,
         flujo_incremental=flujo_inc,
         ahorro_anual=ahorro_opex_anual,
         ahorro_choferes_anual=ahorro_choferes_anual,

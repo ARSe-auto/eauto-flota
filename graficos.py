@@ -106,6 +106,19 @@ def fig_tco_acumulado(r):
         fig.add_annotation(x=pb, y=y_cross, text="se igualan", showarrow=True,
                            arrowhead=2, arrowsize=0.8, arrowcolor=AMBAR, ax=28, ay=38,
                            font=dict(size=11, color=VERDE_OSC))
+
+    # Explicar la caída año 0 → año 1: si la curva EV baja, es el escudo fiscal de la
+    # depreciación instantánea (se deduce el 100% del CAPEX en el año 1). Se anota sólo
+    # cuando la caída existe de verdad, así el gráfico se explica solo.
+    if len(ce) > 1 and (ce[0] - ce[1]) > 0.5:        # baja al menos 0,5 MM CLP
+        fig.add_annotation(
+            x=1, y=ce[1], ax=-30, ay=-56,
+            text="Año 1: baja por el ahorro de<br>impuesto (depreciación instantánea)",
+            showarrow=True, arrowhead=2, arrowsize=0.8, arrowcolor=VERDE_OSC,
+            font=dict(size=10, color=VERDE_OSC), align="left",
+            bgcolor="rgba(255,255,255,0.85)", bordercolor="rgba(11,94,47,0.30)",
+            borderwidth=1, borderpad=3)
+
     _layout(fig, "Costo acumulado de cada flota (nominal) · el cruce = payback", b=90, leg_y=-0.22)
     fig.update_yaxes(title="Millones CLP acumulados")
     fig.update_xaxes(title="Año", dtick=1)

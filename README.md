@@ -79,6 +79,65 @@ python test_motor.py
 
 ---
 
+## 🔗 Relación con las calculadoras públicas de la web (`e-auto.global`)
+
+Hay **tres superficies de cálculo** del TCO en el proyecto, con propósitos distintos. Dan
+números diferentes **por diseño**, no por error: las dos de la web son *lead magnets*
+simplificados; este modelador es el modelo completo de decisión.
+
+| Superficie | Dónde vive | Qué calcula |
+|---|---|---|
+| **Calculadora home** (viva) | `index.html#tco` → `app.js` | "TCO total" simplificado: energía + mantención (CLP/km) **+ un fijo anual prorrateado** (`fixedYr` = seguro + permiso + *depreciación prorrateada*) + diferencia de precio de compra. Nominal, sin descuento. |
+| **Calculadora `/tco`** (histórica) | `calculadora.js` | **Solo operacional**: energía + mantención. Hoy `/tco` **redirige a este modelador**. |
+| **Este modelador** | `motor.py` | **TCO completo**: VPN de todos los egresos. |
+
+Diferencias estructurales de las web vs. este motor:
+
+| | Web (`app.js` / `calculadora.js`) | Este modelador (`motor.py`) |
+|---|---|---|
+| Descuento (VPN) | No (suma nominal) | Sí |
+| Escalamiento de precios | No | Diésel / electricidad / costos |
+| OPEX | energía + mantención (+ fijo prorrateado en `app.js`) | energía, mantención, **neumáticos, seguro, permiso, AdBlue** desglosados |
+| Depreciación | proxy de costo prorrateado (`app.js`) / aparte (`calculadora.js`) | **escudo tributario SII** dentro de los flujos (lineal/acel./instantánea) |
+| IVA, residual, cargadores | No | Sí (IVA recuperable, residual neto, CAPEX de carga) |
+| Choferes / equivalencia logística | No | Sí (palanca mayor) |
+| Pérdidas de carga | No | Sí (+10 %) |
+| CO₂ | Solo diésel evitado | Diésel evitado **− emisiones de la red EV** |
+
+> ⚠️ Importante: hoy la página dedicada `/tco` **redirige a este Streamlit**, así que abrir
+> "la página explícita de TCO" muestra *este mismo* motor (resultados idénticos por
+> definición). La calculadora pública que **sí difiere** es la de la **home** (`app.js`).
+
+**Se reconcilian al peso en su núcleo compartido.** Forzando los mismos inputs y apagando en
+este modelador las capas que la web no tiene (descuento = 0, escalamientos = 0, sin pérdidas,
+sin neumáticos/seguro/permiso/AdBlue, sin choferes/residual/tributo, mantención por km
+equivalente), coinciden exactamente en:
+
+- **Ahorro operacional** (energía + mantención, nominal) — al peso.
+- **Escudo tributario año 1** — idéntica fórmula: `precio_EV / 1,19 · 0,27 · nº vehículos`
+  (depreciación instantánea sobre el valor neto de IVA).
+- **Payback simple** (alineando los precios de compra).
+
+**Trampas al comparar** (por qué los titulares *no* cuadran out-of-the-box):
+
+- **Unidades del consumo diésel:** la web pide **L/100 km**; este motor pide **km/L**
+  (11 L/100 km ≠ 11 km/L). Convertir antes de comparar.
+- **Costo/km:** las barras de la web **incluyen mantención** (y `app.js` además el fijo
+  prorrateado); el titular de costo/km de este motor es **solo combustible/energía** (lo demás
+  va como gasto anual aparte).
+- **CO₂:** la web solo cuenta el diésel evitado; este motor además **resta** las emisiones de
+  la red eléctrica (factor 0,30 kg CO₂/kWh), por lo que da menos toneladas.
+- **Defaults distintos:** km/año, precio del diésel, tarifa eléctrica y horizonte difieren
+  entre las tres.
+- **`app.js` ≠ `calculadora.js`:** la de la home incluye un fijo anual prorrateado (seguro +
+  permiso + depreciación) y suma la diferencia de precio de compra; la de `/tco` es solo
+  energía + mantención. Mantenerlas coherentes al editar supuestos.
+
+> Verificación cruzada: se replicó `calculadora.js` en Python y se enfrentó a `motor.py` en el
+> mismo escenario → el núcleo operacional y el escudo tributario cuadran al peso.
+
+---
+
 ## 📁 Archivos
 
 | Archivo | Rol |
