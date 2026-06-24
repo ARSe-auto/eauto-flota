@@ -128,10 +128,13 @@ sb.caption("Pasa el cursor sobre el ícono **ⓘ** de cada campo para ver la ayu
 
 # Toggle de equivalencia controlado por DOS checkboxes sincronizados (barra lateral + pestaña
 # «Capacidad y flota»). Patrón canónico Streamlit: cada callback ESPEJA su valor en la clave del
-# otro widget; ambos parten en False. La fuente de verdad es ss.eq_cap_sb (== ss.eq_cap_tab).
+# otro widget. La fuente de verdad es ss.eq_cap_sb (== ss.eq_cap_tab). Parten en True: la app
+# abre en el caso real (reemplazar la flota por la cantidad MÍNIMA de EV que iguala la capacidad,
+# que reduce vehículos y choferes) — es el escenario fuerte y representativo. Se puede desactivar
+# para ver el reemplazo 1:1.
 ss = st.session_state
-ss.setdefault("eq_cap_sb", False)
-ss.setdefault("eq_cap_tab", False)
+ss.setdefault("eq_cap_sb", True)
+ss.setdefault("eq_cap_tab", True)
 def _eq_from_sb():  ss.eq_cap_tab = ss.eq_cap_sb
 def _eq_from_tab(): ss.eq_cap_sb = ss.eq_cap_tab
 
@@ -237,7 +240,7 @@ with sb.expander("🔌 Infraestructura de carga"):
         help="Inversión única en empalme/tablero/medidor si la instalación lo requiere. Déjalo en 0 si no aplica.")
 
 # — Logística / choferes —
-with sb.expander("🚚 Logística y choferes"):
+with sb.expander("🚚 Logística y choferes", expanded=True):
     st.checkbox("Aplicar equivalencia por capacidad (reducir flota)", key="eq_cap_sb", on_change=_eq_from_sb,
         help="Si lo activas, el modelo calcula cuántos EV bastan para mover la MISMA carga que la flota diésel. "
              "Como el EV48 carga más (1.440 kg), a veces se necesitan MENOS vehículos → menos choferes. "
