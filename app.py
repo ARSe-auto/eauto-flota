@@ -377,6 +377,25 @@ else:
     st.warning(f"⚠️ Con estos supuestos el VAN es **{clp_mm(r['van'])}** (negativo). "
                "Revisa km/año, precio del diésel o el financiamiento — el caso mejora con más uso y diésel más caro.")
 
+# Advertencia del supuesto activo: cuando se usa CAPACIDAD EQUIVALENTE, las cifras de arriba NO son
+# un reemplazo 1:1 — la flota se reduce y, por eso, la inversión inicial se iguala (o baja). Hay que
+# decirlo explícito para que nadie lea el VAN/payback como si comparara la misma cantidad de vehículos.
+_red_veh = r["n_diesel"] - r["n_ev"]
+if s.aplicar_equivalencia_capacidad and _red_veh > 0:
+    _pct_red = round(_red_veh / r["n_diesel"] * 100)
+    if sin_inversion:
+        _inv_txt = ("la **inversión inicial se iguala**: comprar los " f"{r['n_ev']} EV cuesta lo mismo o "
+                    f"menos que los {r['n_diesel']} diésel")
+    else:
+        _inv_txt = "la **inversión inicial baja** (aunque con estos precios no llega a igualarse del todo)"
+    st.caption(
+        f"📐 **Supuesto activo: capacidad equivalente.** Las cifras de arriba **no** son un reemplazo 1:1: "
+        f"el modelo usa la cantidad mínima de EV que mueve la misma carga, así que la **flota necesaria se "
+        f"reduce ~{_pct_red}%** ({r['n_diesel']} → {r['n_ev']} vehículos) y {_inv_txt}. "
+        f"También puedes **mantener la comparativa con el mismo número de unidades (vans)** —un reemplazo "
+        f"1:1, {r['n_diesel']} diésel → {r['n_diesel']} EV— desactivando «Aplicar equivalencia por "
+        f"capacidad» (barra lateral o pestaña «Capacidad y flota»).")
+
 if s.diesel_costo_hundido:
     st.caption(f"🔧 **Modo «flota diésel ya pagada».** No se cuenta el precio de compra de los diésel (costo "
                f"hundido); la decisión es *seguir con los diésel pagados* vs *comprar EV*. Al cambiarte se asume "
