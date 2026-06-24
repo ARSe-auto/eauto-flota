@@ -8,6 +8,7 @@ from dataclasses import asdict
 from pathlib import Path
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 from motor import (Supuestos, evaluar, tornado, sensibilidad_2d,
                    equivalencia_capacidad, PRESETS_EV, PRESETS_DIESEL)
@@ -45,9 +46,27 @@ st.markdown("""
         { font-family:'Montserrat',-apple-system,Helvetica,Arial,sans-serif; }
   .block-container { padding-top: 1.2rem; padding-bottom: 3rem; max-width: 1290px; }
 
-  /* quitar chrome de Streamlit para un lienzo limpio */
-  [data-testid="stToolbar"], #MainMenu, footer { visibility: hidden; }
-  header[data-testid="stHeader"] { background: transparent; height: 0; }
+  /* quitar SOLO el chrome que estorba (menú, deploy, status, footer),
+     nunca toda la barra: así el botón para reabrir la sidebar nunca se oculta */
+  #MainMenu, [data-testid="stMainMenu"],
+  [data-testid="stAppDeployButton"], [data-testid="stToolbarActions"],
+  [data-testid="stStatusWidget"], footer { display: none !important; }
+  header[data-testid="stHeader"] { background: transparent; }
+
+  /* Botón para reabrir la barra lateral: verde, grande e imposible de no ver.
+     OJO: este elemento ES el <button>, no contiene un button hijo. */
+  [data-testid="stExpandSidebarButton"] {
+      visibility: visible !important; display: flex !important;
+      align-items:center !important; justify-content:center !important;
+      background:#00A651 !important; border:none !important; border-radius:9px !important;
+      width:44px !important; height:44px !important; min-width:44px !important;
+      box-shadow:0 3px 10px rgba(0,0,0,.28) !important; }
+  [data-testid="stExpandSidebarButton"]:hover { background:#0B5E2F !important; }
+  [data-testid="stExpandSidebarButton"] svg,
+  [data-testid="stExpandSidebarButton"] span,
+  [data-testid="stExpandSidebarButton"] [data-testid="stIconMaterial"] {
+      color:#fff !important; fill:#fff !important;
+      width:26px !important; height:26px !important; font-size:26px !important; }
 
   /* Encabezado */
   .ea-hero { background:#0B5E2F; padding: 24px 30px; border-radius: 10px; color:#fff;
@@ -163,6 +182,16 @@ with sb.expander("⛽ Costos del vehículo diésel"):
         help="Solución de urea (SCR) que consumen los diésel modernos Euro 5/6. El EV no la usa.")
     residual_diesel = st.slider("Valor residual diésel al final (% del precio)", 0, 60, 20, 1,
         help="Cuánto vale el furgón diésel al terminar el horizonte, como % del precio de compra.") / 100
+    diesel_pagado = st.checkbox("La flota diésel ya está pagada (costo hundido)", value=False,
+        help="Actívalo si YA posees y pagaste tus diésel. El modelo deja de contar su precio de compra (es costo "
+             "hundido: $0) y supone que, al cambiarte, VENDES los diésel usados — ese ingreso rebaja la compra de "
+             "los EV. Así el payback deja de ser «inmediato» y refleja la recuperación real de la inversión EV.")
+    if diesel_pagado:
+        diesel_reventa = st.slider("↳ Reventa de tus diésel actuales (% del precio de compra)", 0, 80, 40, 5,
+            help="Cuánto recuperas HOY al vender tus diésel usados, como % de su precio original. Un furgón "
+                 "comercial de pocos años ≈ 35–50%. Ese monto se descuenta de la inversión en EV.") / 100
+    else:
+        diesel_reventa = 0.40
 
 # — EV —
 with sb.expander("🔋 Costos del vehículo eléctrico"):
@@ -277,6 +306,7 @@ s = Supuestos(
     permiso_circulacion_diesel=float(permiso_diesel), adblue_anual=float(adblue),
     carga_util_diesel_kg=float(carga_diesel), volumen_diesel_m3=float(vol_diesel),
     valor_residual_diesel_pct=residual_diesel,
+    diesel_costo_hundido=diesel_pagado, diesel_reventa_pct=diesel_reventa,
     precio_ev_clp=float(precio_ev), eficiencia_km_kwh=float(eficiencia),
     precio_energia_kwh=float(precio_kwh), perdidas_carga_pct=perdidas,
     mantencion_ev_anual=float(mant_ev), neumaticos_ev_anual=float(neum_ev),
@@ -339,6 +369,13 @@ elif r["van"] > 0:
 else:
     st.warning(f"⚠️ Con estos supuestos el VAN es **{clp_mm(r['van'])}** (negativo). "
                "Revisa km/año, precio del diésel o el financiamiento — el caso mejora con más uso y diésel más caro.")
+
+if s.diesel_costo_hundido:
+    st.caption(f"🔧 **Modo «flota diésel ya pagada».** No se cuenta el precio de compra de los diésel (costo "
+               f"hundido); la decisión es *seguir con los diésel pagados* vs *comprar EV*. Al cambiarte se asume "
+               f"que vendes los diésel usados por **{clp(r['diesel_reventa'])}** "
+               f"({diesel_reventa*100:.0f}% de su precio), que se descuenta de la inversión en EV. Por eso el "
+               f"payback ya no es «inmediato»: refleja recuperar la inversión EV neta.")
 
 # ════════════════════════════════════════════════════════════════════════════
 #  TABS
@@ -572,3 +609,55 @@ with t7:
 st.caption(f"E-AUTO Global · Modelador de flota v1.0 · Las cifras de arriba reflejan TUS inputs actuales "
            f"(diésel {clp(precio_diesel_l)}/L · IVA {'recuperable' if iva_recuperable else 'no recuperable'}). "
            f"El motor está validado contra el caso base del Estudio de Mercado (Entregable 7).")
+
+# ════════════════════════════════════════════════════════════════════════════
+#  EL MENÚ LATERAL SIEMPRE VISIBLE
+#  Streamlit recuerda en localStorage si la barra quedó colapsada, y esa marca
+#  ANULA initial_sidebar_state="expanded" en las visitas siguientes (por eso a
+#  algunos usuarios «desaparecía» el menú sin forma de reabrirlo). Este componente
+#  corre en su iframe del MISMO origen (srcDoc → allow-same-origin): borra esa
+#  marca y, si la barra está colapsada en un viewport de escritorio, la reabre
+#  automáticamente UNA vez por sesión. Si algo fallara, el botón verde de
+#  reapertura (CSS de arriba) queda siempre disponible como respaldo.
+# ════════════════════════════════════════════════════════════════════════════
+components.html("""
+<script>
+(function () {
+  try {
+    var p = window.parent;
+    if (!p || !p.document) return;
+    var SK = '__eauto_sidebar_autoexpanded';
+    // 1) Borrar la marca persistente de "barra colapsada".
+    try {
+      for (var i = p.localStorage.length - 1; i >= 0; i--) {
+        var k = p.localStorage.key(i);
+        if (k && k.indexOf('stSidebarCollapsed') === 0) p.localStorage.removeItem(k);
+      }
+    } catch (e) {}
+    // 2) Reabrir automáticamente una sola vez por sesión (no peleamos si el
+    //    usuario la cierra a propósito), y sólo en pantallas de escritorio.
+    if (p.sessionStorage.getItem(SK)) return;
+    var tries = 0;
+    var iv = setInterval(function () {
+      tries++;
+      var done = false;
+      try {
+        var sb = p.document.querySelector('[data-testid="stSidebar"]');
+        if (sb) {
+          if (sb.getAttribute('aria-expanded') === 'false') {
+            if (p.innerWidth >= 640) {
+              var btn = p.document.querySelector('[data-testid="stExpandSidebarButton"]');
+              if (btn) { btn.click(); done = true; }
+            }
+          } else { done = true; }
+        }
+      } catch (e) {}
+      if (done || tries > 25) {
+        clearInterval(iv);
+        try { p.sessionStorage.setItem(SK, '1'); } catch (e) {}
+      }
+    }, 120);
+  } catch (e) {}
+})();
+</script>
+""", height=0)
