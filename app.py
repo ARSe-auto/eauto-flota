@@ -83,8 +83,12 @@ st.markdown("""
 
   /* Métricas como tarjetas sobrias */
   div[data-testid="stMetric"] { background:#FAFBFA; border:1px solid #ECEFEE; border-radius:8px;
-                                padding:13px 16px; }
-  div[data-testid="stMetricLabel"] p { font-size:12px; color:#7A8780; font-weight:500; }
+                                padding:13px 16px; min-height:104px; }
+  /* la etiqueta puede envolver a 2 líneas en vez de truncarse con elipsis */
+  div[data-testid="stMetricLabel"] p { font-size:12px; color:#5C6B63; font-weight:500;
+        white-space:normal !important; overflow:visible !important; text-overflow:clip !important;
+        line-height:1.25; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+        min-height:2.5em; }
   div[data-testid="stMetricValue"] { font-size:23px; font-weight:700; color:#15302A; letter-spacing:-.01em; }
   div[data-testid="stMetricDelta"] { font-size:12px; }
 
@@ -340,21 +344,21 @@ if r["payback"] is None:
 elif r["payback"] <= 0.01:
     pb_txt = "Inmediato"
 else:
-    pb_txt = f"{r['payback']:.1f} a"
+    pb_txt = f"{r['payback']:.1f}".replace(".", ",") + " años"
 ahorro_anio_prom = sum(r["ahorro_anual"]) / len(r["ahorro_anual"])
 
 k = st.columns(6)
 k[0].metric("VAN del cambio", clp_mm(r["van"]),
             help="Valor Actual Neto: la riqueza neta (en $ de hoy) que genera reemplazar la flota. Positivo = conviene.")
-k[1].metric("TIR incremental", tir_txt,
+k[1].metric("TIR", tir_txt,
             help="Tasa Interna de Retorno de la inversión incremental. Compárala con tu costo de capital.")
 k[2].metric("Payback", pb_txt,
             help="Años para recuperar el sobrecosto inicial del cambio.")
-k[3].metric("Ahorro anual prom.", clp_mm(ahorro_anio_prom),
+k[3].metric("Ahorro/año", clp_mm(ahorro_anio_prom),
             help="Ahorro promedio por año de toda la flota (energía + mantención + choferes + tributario).")
-k[4].metric(f"Ventaja TCO {horizonte}a", f"{r['tco_delta_pct']*100:.0f}%", clp_mm(r["tco_delta"]),
-            help="Cuánto más barato es el TCO eléctrico vs diésel en el horizonte (valor presente).")
-k[5].metric("CO₂ evitado/año", f"{r['co2_evitado_anio']:.0f} t",
+k[4].metric("Ventaja TCO", f"{r['tco_delta_pct']*100:.0f}%", clp_mm(r["tco_delta"]),
+            help=f"Cuánto más barato es el TCO eléctrico vs diésel a {horizonte} años (valor presente).")
+k[5].metric("CO₂ evitado", f"{r['co2_evitado_anio']:.1f}".replace(".", ",") + " t",
             help="Toneladas de CO₂ que deja de emitir la flota al año.")
 
 if r["van"] > 0 and sin_inversion:
@@ -451,7 +455,7 @@ with tflota:
             f"Todo lo de abajo refleja esa flota reducida.</div>", unsafe_allow_html=True)
     else:
         st.markdown(
-            "<div style='color:#7A8780;font-size:13px;margin:-2px 0 8px'>○ <b>Modo reemplazo 1:1.</b> "
+            "<div style='color:#5C6B63;font-size:13px;margin:-2px 0 8px'>○ <b>Modo reemplazo 1:1.</b> "
             "Misma cantidad de vehículos que la flota diésel. Marca la casilla para que el modelo reduzca la "
             "flota (y los choferes) usando la mayor carga del EV, y veas el ahorro que aporta al VAN.</div>",
             unsafe_allow_html=True)
@@ -460,10 +464,10 @@ with tflota:
     eqn = (f"<div style='background:#F2F8F4;border-left:4px solid #00A651;border-radius:8px;"
            f"padding:14px 18px;margin:6px 0 10px;font-size:17px;color:#15302A'>"
            f"<b>{r['n_diesel']}</b> furgones diésel "
-           f"<span style='color:#7A8780'>({s.volumen_diesel_m3:g} m³ · {s.carga_util_diesel_kg:,.0f} kg c/u)</span>"
+           f"<span style='color:#5C6B63'>({s.volumen_diesel_m3:g} m³ · {s.carga_util_diesel_kg:,.0f} kg c/u)</span>"
            f" &nbsp;≡&nbsp; <b style='color:#0B5E2F'>{r['n_ev']}</b> Gecko EV "
-           f"<span style='color:#7A8780'>({s.volumen_ev_m3:g} m³ · {s.carga_util_ev_kg:,.0f} kg c/u)</span>"
-           f" &nbsp;→&nbsp; <b style='color:#00A651'>−{log['reduccion_vehiculos']} unidades</b></div>")
+           f"<span style='color:#5C6B63'>({s.volumen_ev_m3:g} m³ · {s.carga_util_ev_kg:,.0f} kg c/u)</span>"
+           f" &nbsp;→&nbsp; <b style='color:#0B5E2F'>−{log['reduccion_vehiculos']} unidades</b></div>")
     st.markdown(eqn.replace(",", "."), unsafe_allow_html=True)
 
     # 2) Cuatro métricas: las dos lecturas + el puente a operación y dinero
@@ -580,8 +584,9 @@ with t5:
     Z = sensibilidad_2d(s, "precio_diesel_l", precios, "km_anual_por_vehiculo", kms, "van")
     st.plotly_chart(g.fig_heatmap(Z, precios, kms, "Precio diésel (CLP/L)", "Km/año", "VAN (M)"),
                     use_container_width=True, config=PLOTCFG)
-    st.caption("Verde = el cambio conviene; rojo = no. Se ve cómo el caso eléctrico se fortalece con más "
-               "kilómetros y diésel más caro — exactamente el perfil de las flotas de alta utilización.")
+    st.caption("Cada celda muestra el VAN con su signo: **positivo (+) = el cambio conviene** (verde); "
+               "negativo (−) = no conviene (rojo). Se ve cómo el caso eléctrico se fortalece con más "
+               "kilómetros y diésel más caro — el perfil de las flotas de alta utilización.")
 
 # ── TAB 6: CO₂ ────────────────────────────────────────────────────────────
 with t6:
@@ -589,7 +594,7 @@ with t6:
     with c1:
         st.plotly_chart(g.fig_co2(r), use_container_width=True, config=PLOTCFG)
     with c2:
-        st.metric("CO₂ evitado al año", f"{r['co2_evitado_anio']:.1f} t")
+        st.metric("CO₂ evitado al año", f"{r['co2_evitado_anio']:.1f}".replace(".", ",") + " t")
         st.metric(f"CO₂ evitado en {horizonte} años", f"{r['co2_evitado_horizonte']:.0f} t")
         arboles = r["co2_evitado_anio"] * 1000 / 21  # ~21 kg CO₂/árbol/año
         st.info(f"El CO₂ evitado al año equivale a lo que capturan ~**{arboles:,.0f} árboles** en un año."

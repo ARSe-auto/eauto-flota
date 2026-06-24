@@ -190,7 +190,7 @@ def render(s, r):
         st.markdown(f"Rentabilidad del cambio (bisección). Tuyo: **{tir}**.")
     with cc[2]:
         st.latex(r"\text{Payback}=\frac{\text{sobrecosto}}{\text{ahorro/año}}")
-        pb = "Inmediato" if (r["payback"] or 0) <= 0.01 else (f"{r['payback']:.1f} años" if r["payback"] else ">horizonte")
+        pb = "Inmediato" if (r["payback"] or 0) <= 0.01 else (f"{r['payback']:.1f}".replace(".", ",") + " años" if r["payback"] else ">horizonte")
         st.markdown(f"Tiempo de recuperación. Tuyo: **{pb}**.")
     st.markdown(_md(f"Sobrecosto inicial (CAPEX delta) = {_mm(r['escenario_ev']['capex'])} − "
                     f"{_mm(r['escenario_diesel']['capex'])} = **{_mm(r['inc_capex'])}**. "
@@ -257,8 +257,9 @@ def render(s, r):
     st.markdown("### 🌱 Emisiones de CO₂ evitadas")
     st.latex(r"CO_2^{diésel}=\frac{km/\text{año}}{\text{km/L}}\times 2{,}68\ \tfrac{kg}{L}"
              r"\qquad CO_2^{EV}=\frac{km/\text{año}}{\text{km/kWh}}\times 0{,}30\ \tfrac{kg}{kWh}")
-    st.markdown(f"Flota diésel: **{r['co2_diesel_anio']:.1f} t/año** · Flota EV: **{r['co2_ev_anio']:.1f} t/año** "
-                f"→ evitas **{r['co2_evitado_anio']:.1f} t/año** "
+    _clt = lambda x: f"{x:.1f}".replace(".", ",")
+    st.markdown(f"Flota diésel: **{_clt(r['co2_diesel_anio'])} t/año** · Flota EV: **{_clt(r['co2_ev_anio'])} t/año** "
+                f"→ evitas **{_clt(r['co2_evitado_anio'])} t/año** "
                 f"(**{r['co2_evitado_horizonte']:.0f} t** en {n} años). El factor EV baja a futuro porque la "
                 f"red eléctrica chilena se descarboniza.")
     st.divider()

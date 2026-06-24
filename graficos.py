@@ -18,7 +18,7 @@ AMBAR = "#C8A15A"          # oro apagado
 TINTA = "#15302A"          # texto/títulos
 GRID = "#ECEFEE"           # grilla casi imperceptible
 LINEA = "#D7DBDA"          # ejes
-MUTED = "#7A8780"          # etiquetas de ejes
+MUTED = "#566159"          # etiquetas de ejes (contraste WCAG AA ~5:1)
 PLANTILLA = "plotly_white"
 
 FONT = dict(family="Montserrat, Helvetica Neue, Arial, sans-serif", size=13, color="#2B3B33")
@@ -97,12 +97,13 @@ def fig_tco_acumulado(r):
         lo = int(pb); hi = min(lo + 1, n); frac = pb - lo
         y_cross = cd[lo] + (cd[hi] - cd[lo]) * frac   # cd y ce coinciden en el cruce
         fig.add_vline(x=pb, line=dict(color=AMBAR, width=2, dash="dot"),
-                      annotation_text=f"Payback {pb:.1f} a", annotation_position="top")
+                      annotation_text="Payback " + f"{pb:.1f}".replace(".", ",") + " años",
+                      annotation_position="top")
         fig.add_trace(go.Scatter(
             x=[pb], y=[y_cross], mode="markers",
             marker=dict(size=15, color=AMBAR, symbol="circle", line=dict(color="white", width=2.5)),
             name="Punto de equilibrio", showlegend=False,
-            hovertemplate=f"Se igualan a los {pb:.1f} años<extra></extra>"))
+            hovertemplate="Se igualan a los " + f"{pb:.1f}".replace(".", ",") + " años<extra></extra>"))
         fig.add_annotation(x=pb, y=y_cross, text="se igualan", showarrow=True,
                            arrowhead=2, arrowsize=0.8, arrowcolor=AMBAR, ax=28, ay=38,
                            font=dict(size=11, color=VERDE_OSC))
@@ -268,7 +269,7 @@ def fig_tornado(filas, base, delta_pct=20):
     for f in filas:
         direc = "subir" if f["sentido"] == "directa" else "bajar"
         f["_et"] = (f"{f['palanca']}<br>"
-                    f"<span style='font-size:11px;color:#9AA3AD'>"
+                    f"<span style='font-size:11.5px;color:#5C6B63'>"
                     f"mejora al {direc} · ±{delta_pct}% mueve {_mm(f['swing']):.0f}M</span>")
 
     leyenda = set()
@@ -292,9 +293,9 @@ def fig_tornado(filas, base, delta_pct=20):
     _layout(fig, "Sensibilidad del VAN · variables ordenadas de MAYOR a menor influencia",
             alto=470, leg=False, b=50, hover="closest")
     fig.update_yaxes(categoryorder="array", categoryarray=[f["_et"] for f in filas][::-1],
-                     tickfont=dict(size=12.5))
+                     tickfont=dict(size=11))
     fig.update_xaxes(title="Δ VAN vs caso base (millones CLP)   ·   ◀ rojo: baja   |   verde: sube ▶")
-    fig.update_layout(barmode="overlay", margin=dict(l=202, r=40))
+    fig.update_layout(barmode="overlay", margin=dict(l=150, r=20))
     return fig
 
 
@@ -304,7 +305,7 @@ def fig_heatmap(Z, valores_x, valores_y, label_x, label_y, label_z="VAN (M)"):
     fig = go.Figure(go.Heatmap(
         z=Zmm, x=valores_x, y=valores_y, colorscale="RdYlGn", zmid=0,
         colorbar=dict(title=label_z),
-        text=[[f"{v:.0f}" if v == v else "" for v in fila] for fila in Zmm],
+        text=[[f"{v:+.0f}" if v == v else "" for v in fila] for fila in Zmm],
         texttemplate="%{text}", hovertemplate=f"{label_x}: %{{x}}<br>{label_y}: %{{y}}<br>{label_z}: %{{z:.1f}}<extra></extra>",
     ))
     _layout(fig, f"Mapa de sensibilidad · {label_x} × {label_y} → {label_z}",
@@ -321,7 +322,8 @@ def fig_co2(r):
         x=["Flota diésel", "Flota eléctrica"],
         y=[r["co2_diesel_anio"], r["co2_ev_anio"]],
         marker_color=[DIESEL, VERDE], width=[0.46, 0.46],
-        text=[f"{r['co2_diesel_anio']:.1f} t", f"{r['co2_ev_anio']:.1f} t"],
+        text=[f"{r['co2_diesel_anio']:.1f}".replace(".", ",") + " t",
+              f"{r['co2_ev_anio']:.1f}".replace(".", ",") + " t"],
         textposition="outside", textfont=dict(size=14, color=TINTA), cliponaxis=False,
     ))
     _layout(fig, "Emisiones de CO₂ anuales de la flota", alto=360, leg=False, b=48, hover=False)
@@ -331,21 +333,44 @@ def fig_co2(r):
 
 # ── 11. Medidores (gauges) de los KPI principales ────────────────────────────
 def fig_gauge_payback(pb, horizonte):
-    val = pb if pb is not None else horizonte * 1.5
+    # La cifra y el color del medidor reflejan la realidad, sin inventar números:
+    #  · si NO hay payback dentro del horizonte → ">N años" en rojo + nota explícita
+    #  · si el ahorro es inmediato → 0 en verde + nota "ahorro desde el día 1"
+    #  · si hay payback → la barra se pinta según en qué zona cae (verde/ámbar/rojo)
+    nota = None
+    if pb is None:
+        val = horizonte
+        col = ROJO
+        num = dict(prefix=">", suffix=" años", valueformat=".0f",
+                   font=dict(size=36, color=ROJO, family=FONT["family"]))
+        nota = ("no se recupera en el horizonte", ROJO)
+    elif pb <= 0.01:
+        val = 0.0
+        col = VERDE
+        num = dict(suffix=" años", valueformat=".1f",
+                   font=dict(size=36, color=TINTA, family=FONT["family"]))
+        nota = ("ahorro desde el día 1", VERDE_OSC)
+    else:
+        val = pb
+        col = VERDE if pb <= horizonte * 0.4 else (AMBAR if pb <= horizonte * 0.7 else ROJO)
+        num = dict(suffix=" años", valueformat=".1f",
+                   font=dict(size=36, color=TINTA, family=FONT["family"]))
     fig = go.Figure(go.Indicator(
-        mode="gauge+number", value=val,
-        number=dict(suffix=" años", font=dict(size=36, color=TINTA, family=FONT["family"])),
+        mode="gauge+number", value=val, number=num,
         title=dict(text="Payback", font=dict(size=15, color=MUTED, family=FONT["family"])),
         gauge=dict(axis=dict(range=[0, horizonte], tickwidth=1, tickcolor=LINEA,
                              tickfont=dict(color=MUTED, size=11)),
-                   bar=dict(color=VERDE, thickness=0.32),
+                   bar=dict(color=col, thickness=0.32),
                    bgcolor="white", borderwidth=0,
                    steps=[dict(range=[0, horizonte * 0.4], color="#E3F4EA"),
                           dict(range=[horizonte * 0.4, horizonte * 0.7], color="#F6EEDB"),
                           dict(range=[horizonte * 0.7, horizonte], color="#F3E0DD")]),
     ))
+    if nota:
+        fig.add_annotation(text=nota[0], x=0.5, y=-0.02, xref="paper", yref="paper",
+                           showarrow=False, font=dict(size=11, color=nota[1]))
     fig.update_layout(height=260, margin=dict(l=24, r=24, t=56, b=12),
-                      paper_bgcolor="white", font=FONT)
+                      paper_bgcolor="white", font=FONT, separators=",.")
     return fig
 
 
@@ -387,7 +412,7 @@ def fig_pictograma_capacidad(eq, por_fila=10):
     # etiquetas de banda
     fig.add_annotation(x=-0.6, y=y0_diesel + 1.05, xanchor="left", showarrow=False,
         text=(f"<b>FLOTA DIÉSEL</b> · {nd} unidades · {eq['vol_total_d']:.0f} m³ · "
-              f"{eq['peso_total_d']:,.0f} kg").replace(",", "."), font=dict(size=13, color=DIESEL))
+              f"{eq['peso_total_d']:,.0f} kg").replace(",", "."), font=dict(size=13, color="#6B5B4F"))
     fig.add_annotation(x=-0.6, y=y0_ev + 1.05, xanchor="left", showarrow=False,
         text=(f"<b>FLOTA EV EQUIVALENTE</b> · {nev} unidades  "
               f"(−{liberados}, misma capacidad)"), font=dict(size=13, color=VERDE_OSC))
